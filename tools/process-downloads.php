@@ -145,6 +145,7 @@ try {
 
         $downloaded = false;
         $lastError = '';
+        $localPath = null;
 
         for ($attempt = 1; $attempt <= 3; $attempt++) {
             $jobs->heartbeat($jobId);
