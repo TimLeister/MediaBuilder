@@ -5,8 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../vendor/autoload.php';
 require_once __DIR__ . '/../../app/helpers.php';
 
-use MediaAuth;
-use MediaConfig;
+use Media\Auth;
+use Media\Config;
 
 Config::load(__DIR__ . '/../..');
 
