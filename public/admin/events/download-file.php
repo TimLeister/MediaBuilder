@@ -6,8 +6,8 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../app/helpers.php';
 require_once __DIR__ . '/../bootstrap.php';
 
-use MediaDatabase;
-use MediaDownloadJob;
+use Media\Database;
+use Media\DownloadJob;
 
 $jobId = (int) ($_GET['id'] ?? 0);
 
@@ -19,7 +19,7 @@ if ($jobId <= 0) {
 $db = Database::connection();
 $job = (new DownloadJob($db))->findById($jobId);
 
-if (!$job || (int) $job['user_id'] !== MediaAuth::userId()) {
+if (!$job || (int) $job['user_id'] !== Media\Auth::userId()) {
     http_response_code(404);
     exit('Download not found.');
 }
