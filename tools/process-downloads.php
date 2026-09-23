@@ -20,7 +20,14 @@ $jobs = new DownloadJob($db);
 $jobId = isset($argv[1]) ? (int) $argv[1] : null;
 
 $lockPath = sys_get_temp_dir() . '/mediabuilder-download-worker.lock';
+
+$previousUmask = umask(0000);
 $lockHandle = fopen($lockPath, 'c');
+umask($previousUmask);
+
+if ($lockHandle !== false) {
+    @chmod($lockPath, 0666);
+}
 
 if ($lockHandle === false || !flock($lockHandle, LOCK_EX | LOCK_NB)) {
     exit(0);
