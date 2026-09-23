@@ -103,6 +103,35 @@ final class DownloadJob
         return $job ?: null;
     }
 
+    public function forEventUser(
+        int $userId,
+        int $eventId,
+        int $limit = 10
+    ): array {
+        $limit = max(1, min($limit, 25));
+
+        $stmt = $this->db->prepare(
+            'SELECT *
+             FROM download_jobs
+             WHERE user_id = :user_id
+               AND event_id = :event_id
+               AND (
+                    status <> "expired"
+                    OR expires_at IS NULL
+                    OR expires_at > NOW()
+               )
+             ORDER BY id DESC
+             LIMIT $limit'
+        );
+
+        $stmt->execute([
+            'user_id' => $userId,
+            'event_id' => $eventId,
+        ]);
+
+        return $stmt->fetchAll();
+    }
+
     public function claimNext(?int $jobId = null): ?array
     {
         $this->db->beginTransaction();
