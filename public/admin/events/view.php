@@ -1355,7 +1355,7 @@ function renderDownloadJob(job) {
     return job.status;
 }
 
-async async function loadDownloadJobs() {
+async function loadDownloadJobs() {
 
     try {
 
@@ -1419,7 +1419,7 @@ async async function loadDownloadJobs() {
 
 }
 
-function startDownload(type) {
+async function startDownload(type) {
 
     try {
 
