@@ -58,11 +58,18 @@ final class Auth
         return true;
     }
 
+    public static function userId(): int
+    {
+        self::startSession();
+
+        return (int) ($_SESSION[self::SESSION_KEY] ?? 0);
+    }
+
     public static function check(PDO $db): bool
     {
         self::startSession();
 
-        $userId = (int) ($_SESSION[self::SESSION_KEY] ?? 0);
+        $userId = self::userId();
 
         if ($userId <= 0) {
             return false;
