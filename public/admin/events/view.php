@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../app/helpers.php';
 require_once __DIR__ . '/../bootstrap.php';
 
+use Media\Auth;
 use Media\Config;
 use Media\Database;
 use Media\Event;
@@ -16,6 +17,8 @@ use Media\Spaces;
 Config::load(__DIR__ . '/../../..');
 
 $db = Database::connection();
+
+$csrfToken = Auth::csrfToken();
 
 $eventId = (int) ($_GET['id'] ?? 0);
 
@@ -551,7 +554,6 @@ $deletedCount = isset($_GET['deleted'])
 <body>
 
 <div class="top">
-
     <div>
 
         <a
@@ -622,6 +624,13 @@ $deletedCount = isset($_GET['deleted'])
 
 <?php endif; ?>
 
+
+<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <form method="post" action="/admin/logout.php" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+        <button class="button button-secondary" type="submit">Log Out</button>
+    </form>
+</div>
 
 <div class="actions">
 
