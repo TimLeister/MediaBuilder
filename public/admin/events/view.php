@@ -1355,7 +1355,71 @@ function renderDownloadJob(job) {
     return job.status;
 }
 
-async function startDownload(type) {
+async async function loadDownloadJobs() {
+
+    try {
+
+        const response = await fetch(
+            '/api/download-list.php?event_id=' + eventId,
+            {
+                cache: 'no-store'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            return;
+        }
+
+        const container =
+            document.getElementById('downloadJobs');
+
+        container.innerHTML = '';
+
+        if (!data.jobs.length) {
+            container.innerHTML =
+                '<div class="status">No downloads requested yet.</div>';
+            return;
+        }
+
+        let hasActive = false;
+
+        data.jobs.forEach((job) => {
+
+            const status = renderDownloadJob(job);
+
+            if (
+                status === 'queued' ||
+                status === 'processing'
+            ) {
+                hasActive = true;
+            }
+
+        });
+
+        if (hasActive) {
+            data.jobs.forEach((job) => {
+
+                if (
+                    job.status === 'queued' ||
+                    job.status === 'processing'
+                ) {
+                    pollDownload(job.id);
+                }
+
+            });
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
+
+}
+
+function startDownload(type) {
 
     try {
 
@@ -1529,6 +1593,8 @@ function copyEmbedCode() {
 
 }
 
+
+loadDownloadJobs();
 
 updateEmbedCode();
 
