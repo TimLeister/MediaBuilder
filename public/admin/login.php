@@ -5,9 +5,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../vendor/autoload.php';
 require_once __DIR__ . '/../../app/helpers.php';
 
-use MediaAuth;
-use MediaConfig;
-use MediaDatabase;
+use Media\\Auth;
+use Media\\Config;
+use Media\\Database;
 
 Config::load(__DIR__ . '/../..');
 
@@ -23,10 +23,16 @@ $error = '';
 $email = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!Auth::verifyCsrf($_POST['csrf_token'] ?? null)) {
+        $error = 'Invalid request. Please try again.';
+    }
+
     $email = trim((string) ($_POST['email'] ?? ''));
     $password = (string) ($_POST['password'] ?? '');
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
+    if ($error !== '') {
+        // Stop here when the CSRF token is invalid.
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
         $error = 'Enter a valid email address and password.';
     } elseif (!Auth::attempt($db, $email, $password)) {
         $error = 'Invalid email address or password.';
