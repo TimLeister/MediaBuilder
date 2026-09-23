@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../app/helpers.php';
+require_once __DIR__ . '/../bootstrap.php';
 
+use Media\Auth;
 use Media\Config;
 use Media\Database;
 use Media\Event;
@@ -15,6 +17,8 @@ use Media\Spaces;
 Config::load(__DIR__ . '/../../..');
 
 $db = Database::connection();
+
+$csrfToken = Auth::csrfToken();
 
 $eventId = (int) ($_GET['id'] ?? 0);
 
@@ -505,6 +509,72 @@ $deletedCount = isset($_GET['deleted'])
             color: #666;
         }
 
+        .download-center {
+            background: #f7f9fc;
+            border: 1px solid #dfe5ec;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 0 0 30px;
+        }
+
+        .download-center h2 {
+            margin: 0 0 6px;
+            font-size: 20px;
+        }
+
+        .download-description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .download-job {
+            background: white;
+            border: 1px solid #e1e5ea;
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 10px;
+        }
+
+        .download-job-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .download-job-name {
+            font-weight: bold;
+        }
+
+        .download-job-status {
+            color: #666;
+            font-size: 13px;
+        }
+
+        .download-progress {
+            height: 9px;
+            background: #e8ebef;
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 12px 0 8px;
+        }
+
+        .download-progress-bar {
+            height: 100%;
+            width: 0;
+            background: #222;
+            transition: width 0.3s ease;
+        }
+
+        .download-job-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+
         .notice {
             width: 100%;
             padding: 12px 15px;
@@ -550,7 +620,6 @@ $deletedCount = isset($_GET['deleted'])
 <body>
 
 <div class="top">
-
     <div>
 
         <a
@@ -622,6 +691,13 @@ $deletedCount = isset($_GET['deleted'])
 <?php endif; ?>
 
 
+<div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+    <form method="post" action="/admin/logout.php" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+        <button class="button button-secondary" type="submit">Log Out</button>
+    </form>
+</div>
+
 <div class="actions">
 
     <a
@@ -630,6 +706,30 @@ $deletedCount = isset($_GET['deleted'])
     >
         Upload Media
     </a>
+
+    <button
+        class="button button-primary"
+        type="button"
+        onclick="startDownload('all')"
+    >
+        Download Everything
+    </button>
+
+    <button
+        class="button button-secondary"
+        type="button"
+        onclick="startDownload('photos')"
+    >
+        Download Photos
+    </button>
+
+    <button
+        class="button button-secondary"
+        type="button"
+        onclick="startDownload('videos')"
+    >
+        Download Videos
+    </button>
 
     <form
         method="POST"
@@ -730,6 +830,20 @@ $deletedCount = isset($_GET['deleted'])
 
 </div>
 
+
+<div class="download-center">
+    <h2>Download Center</h2>
+
+    <div class="download-description">
+        Large event downloads are prepared in the background so you can
+        continue using MediaBuilder while the ZIP is being built.
+        Completed downloads are kept for 24 hours.
+    </div>
+
+    <div id="downloadJobs">
+        <div class="status">No downloads requested yet.</div>
+    </div>
+</div>
 
 <div class="publish-box">
 
@@ -935,12 +1049,13 @@ $deletedCount = isset($_GET['deleted'])
         0 selected
     </span>
 
-    <a
+    <button
         class="button button-secondary"
-        href="/admin/events/download-photos.php?id=<?= $eventId ?>"
+        type="button"
+        onclick="startDownload('photos')"
     >
         Download All Photos
-    </a>
+    </button>
 
     <button
         type="submit"
@@ -1137,6 +1252,256 @@ $deletedCount = isset($_GET['deleted'])
 
 <script>
 
+const csrfToken = <?= json_encode($csrfToken) ?>;
+const eventId = <?= (int) $eventId ?>;
+
+function formatBytes(bytes) {
+
+    if (!bytes) {
+        return '0 B';
+    }
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const exponent = Math.min(
+        Math.floor(Math.log(bytes) / Math.log(1024)),
+        units.length - 1
+    );
+
+    return (
+        bytes / Math.pow(1024, exponent)
+    ).toFixed(exponent === 0 ? 0 : 1)
+    + ' ' + units[exponent];
+}
+
+function downloadTypeLabel(type) {
+    return {
+        photos: 'Photos',
+        videos: 'Videos',
+        all: 'Everything'
+    }[type] || 'Media';
+}
+
+function renderDownloadJob(job) {
+
+    const container =
+        document.getElementById('downloadJobs');
+
+    let card =
+        document.getElementById('download-job-' + job.id);
+
+    if (!card) {
+        card = document.createElement('div');
+        card.className = 'download-job';
+        card.id = 'download-job-' + job.id;
+        container.prepend(card);
+    }
+
+    const percent =
+        Math.max(0, Math.min(100, job.percent || 0));
+
+    let statusText = '';
+
+    if (job.status === 'queued') {
+        statusText = 'Waiting for the download worker to start...';
+    } else if (job.status === 'processing') {
+        statusText =
+            'Preparing ' + job.processed_files +
+            ' of ' + job.total_files + ' files (' +
+            percent + '%)';
+    } else if (job.status === 'complete') {
+        statusText =
+            'Ready — ' + formatBytes(job.total_bytes);
+    } else if (job.status === 'failed') {
+        statusText =
+            'Failed: ' + (job.error_message || 'Unknown error.');
+    } else if (job.status === 'expired') {
+        statusText = 'This download has expired.';
+    }
+
+    card.innerHTML = `
+        <div class="download-job-header">
+            <div class="download-job-name">
+                ${job.download_name || 'Event download'}
+            </div>
+            <div class="download-job-status">
+                ${statusText}
+            </div>
+        </div>
+
+        <div class="download-progress">
+            <div
+                class="download-progress-bar"
+                style="width: ${percent}%"
+            ></div>
+        </div>
+
+        <div class="download-job-status">
+            ${job.processed_files} / ${job.total_files} files
+            · ${formatBytes(job.processed_bytes)}
+            / ${formatBytes(job.total_bytes)}
+        </div>
+
+        <div class="download-job-actions">
+            ${
+                job.status === 'complete'
+                    ? '<a class="button button-primary" href="' +
+                      job.download_url +
+                      '">Download ZIP</a>'
+                    : ''
+            }
+        </div>
+    `;
+
+    return job.status;
+}
+
+async async function loadDownloadJobs() {
+
+    try {
+
+        const response = await fetch(
+            '/api/download-list.php?event_id=' + eventId,
+            {
+                cache: 'no-store'
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            return;
+        }
+
+        const container =
+            document.getElementById('downloadJobs');
+
+        container.innerHTML = '';
+
+        if (!data.jobs.length) {
+            container.innerHTML =
+                '<div class="status">No downloads requested yet.</div>';
+            return;
+        }
+
+        let hasActive = false;
+
+        data.jobs.forEach((job) => {
+
+            const status = renderDownloadJob(job);
+
+            if (
+                status === 'queued' ||
+                status === 'processing'
+            ) {
+                hasActive = true;
+            }
+
+        });
+
+        if (hasActive) {
+            data.jobs.forEach((job) => {
+
+                if (
+                    job.status === 'queued' ||
+                    job.status === 'processing'
+                ) {
+                    pollDownload(job.id);
+                }
+
+            });
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+    }
+
+}
+
+function startDownload(type) {
+
+    try {
+
+        const body = new URLSearchParams();
+
+        body.set('event_id', eventId);
+        body.set('type', type);
+        body.set('csrf_token', csrfToken);
+
+        const response = await fetch(
+            '/api/create-download.php',
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type':
+                        'application/x-www-form-urlencoded'
+                },
+                body: body.toString()
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(
+                data.error || 'Unable to create download.'
+            );
+        }
+
+        pollDownload(data.job.id);
+
+    } catch (error) {
+
+        alert(error.message);
+
+    }
+
+}
+
+async function pollDownload(jobId) {
+
+    const load = async () => {
+
+        try {
+
+            const response = await fetch(
+                '/api/download-status.php?id=' + jobId,
+                {
+                    cache: 'no-store'
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(
+                    data.error || 'Unable to check download status.'
+                );
+            }
+
+            const status =
+                renderDownloadJob(data.job);
+
+            if (
+                status === 'queued' ||
+                status === 'processing'
+            ) {
+                setTimeout(load, 2000);
+            }
+
+        } catch (error) {
+
+            console.error(error);
+
+        }
+
+    };
+
+    load();
+
+}
+
 function copyShareLink() {
 
     const input =
@@ -1228,6 +1593,8 @@ function copyEmbedCode() {
 
 }
 
+
+loadDownloadJobs();
 
 updateEmbedCode();
 
