@@ -199,7 +199,7 @@ final class DownloadJob
                 completed_at = NOW(),
                 expires_at = DATE_ADD(
                     NOW(),
-                    INTERVAL :ttl_hours HOUR
+                    INTERVAL 24 HOUR
                 )
              WHERE id = :id'
         );
@@ -207,7 +207,6 @@ final class DownloadJob
         $stmt->execute([
             'id' => $id,
             'archive_path' => $archivePath,
-            'ttl_hours' => $ttlHours,
         ]);
     }
 
