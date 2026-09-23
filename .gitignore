@@ -1,0 +1,36 @@
+.env
+/vendor/
+/storage/*
+
+# Video / Raw Media files uploaded to root
+*.MTS
+*.mts
+*.mp4
+*.mov
+*.avi
+
+# Dependency directories
+/vendor/
+
+# Local configuration & environment files
+.env
+.env.local
+.env.*.local
+
+# Storage & Runtime logs
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+/storage/app/public/
+
+# Public uploaded media / assets (uncomment if public uploads shouldn't be tracked)
+#/public/uploads/
+#/public/storage
+
+# IDE & OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

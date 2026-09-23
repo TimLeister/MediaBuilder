@@ -1,0 +1,206 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../app/helpers.php';
+
+use Media\Config;
+use Media\Database;
+use Media\Event;
+use Media\MediaFile;
+use Media\Spaces;
+
+Config::load(__DIR__ . '/..');
+
+$db = Database::connection();
+
+$eventModel = new Event($db);
+$mediaModel = new MediaFile($db);
+$spaces = new Spaces();
+
+/*
+ * Require an event ID.
+ */
+$eventId = isset($argv[1])
+    ? (int) $argv[1]
+    : 0;
+
+if ($eventId <= 0) {
+    fwrite(
+        STDERR,
+        "Usage: php import-spaces.php EVENT_ID\n"
+    );
+
+    exit(1);
+}
+
+/*
+ * Confirm event exists.
+ */
+$event = $eventModel->findById($eventId);
+
+if (!$event) {
+    fwrite(
+        STDERR,
+        "Event not found.\n"
+    );
+
+    exit(1);
+}
+
+if (empty($event['storage_prefix'])) {
+    fwrite(
+        STDERR,
+        "Event does not have a storage prefix.\n"
+    );
+
+    exit(1);
+}
+
+$prefix =
+    rtrim($event['storage_prefix'], '/')
+    . '/originals/';
+
+echo "Event: {$event['name']}\n";
+echo "Scanning: {$prefix}\n";
+
+/*
+ * Supported media types.
+ */
+$mimeTypes = [
+    'jpg' => ['image/jpeg', 'photo'],
+    'jpeg' => ['image/jpeg', 'photo'],
+    'png' => ['image/png', 'photo'],
+    'webp' => ['image/webp', 'photo'],
+
+    'mts' => ['video/mp2t', 'video'],
+    'm2ts' => ['video/mp2t', 'video'],
+    'mp4' => ['video/mp4', 'video'],
+    'mov' => ['video/quicktime', 'video'],
+    'webm' => ['video/webm', 'video'],
+];
+
+/*
+ * List objects in the event's originals directory.
+ */
+try {
+    $result = $spaces->listObjects($prefix);
+} catch (Throwable $e) {
+    fwrite(
+        STDERR,
+        "Unable to list Spaces objects: "
+        . $e->getMessage()
+        . "\n"
+    );
+
+    exit(1);
+}
+
+$imported = 0;
+$skipped = 0;
+$unsupported = 0;
+
+foreach ($result as $object) {
+
+    $key = $object['Key'] ?? '';
+
+    if ($key === '' || str_ends_with($key, '/')) {
+        continue;
+    }
+
+    /*
+     * Only import files directly inside originals/.
+     */
+    $relativePath = substr(
+        $key,
+        strlen($prefix)
+    );
+
+    if (
+        $relativePath === ''
+        || str_contains($relativePath, '/')
+    ) {
+        $skipped++;
+        continue;
+    }
+
+    $extension = strtolower(
+        pathinfo($relativePath, PATHINFO_EXTENSION)
+    );
+
+    if (
+        $extension === ''
+        || !isset($mimeTypes[$extension])
+    ) {
+        echo "Unsupported: {$relativePath}\n";
+        $unsupported++;
+        continue;
+    }
+
+    [
+        $mimeType,
+        $mediaType,
+    ] = $mimeTypes[$extension];
+
+    /*
+     * Use the object key as the duplicate check.
+     */
+    $stmt = $db->prepare(
+        '
+        SELECT id
+        FROM media_files
+        WHERE storage_key = :storage_key
+        LIMIT 1
+        '
+    );
+
+    $stmt->execute([
+        'storage_key' => $key,
+    ]);
+
+    if ($stmt->fetch()) {
+        echo "Already imported: {$relativePath}\n";
+        $skipped++;
+        continue;
+    }
+
+    /*
+     * Generate our internal media UUID.
+     */
+    $uuid = bin2hex(
+        random_bytes(16)
+    );
+
+    $filename = basename($relativePath);
+
+    $fileSize = isset($object['Size'])
+        ? (int) $object['Size']
+        : 0;
+
+    /*
+     * We already know the CDN URL.
+     */
+    $cdnUrl = $spaces->url($key);
+
+    $mediaModel->create(
+        $eventId,
+        $uuid,
+        $filename,
+        $mediaType,
+        $mimeType,
+        $fileSize,
+        $key,
+        $cdnUrl
+    );
+
+    echo "Imported: {$relativePath}\n";
+
+    $imported++;
+}
+
+echo "\n";
+echo "Import complete.\n";
+echo "Imported: {$imported}\n";
+echo "Skipped: {$skipped}\n";
+echo "Unsupported: {$unsupported}\n";

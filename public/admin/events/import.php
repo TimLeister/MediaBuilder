@@ -1,0 +1,169 @@
+<?php
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../../../vendor/autoload.php';
+require_once __DIR__ . '/../../../app/helpers.php';
+
+use Media\Config;
+use Media\Database;
+use Media\Event;
+use Media\MediaFile;
+use Media\Spaces;
+
+Config::load(__DIR__ . '/../../..');
+
+$db = Database::connection();
+
+$eventId = (int) ($_POST['event_id'] ?? 0);
+
+if ($eventId <= 0) {
+    http_response_code(400);
+    exit('Invalid event.');
+}
+
+$eventModel = new Event($db);
+$mediaModel = new MediaFile($db);
+$spaces = new Spaces();
+
+$event = $eventModel->findById($eventId);
+
+if (!$event) {
+    http_response_code(404);
+    exit('Event not found.');
+}
+
+if (empty($event['storage_prefix'])) {
+    http_response_code(500);
+    exit('Event does not have a storage prefix.');
+}
+
+$basePrefix =
+    rtrim($event['storage_prefix'], '/')
+    . '/';
+
+$prefixes = [
+    $basePrefix,
+    $basePrefix . 'originals/',
+];
+
+$mimeTypes = [
+    'jpg' => ['image/jpeg', 'photo'],
+    'jpeg' => ['image/jpeg', 'photo'],
+    'png' => ['image/png', 'photo'],
+    'webp' => ['image/webp', 'photo'],
+
+    'mts' => ['video/mp2t', 'video'],
+    'm2ts' => ['video/mp2t', 'video'],
+    'mp4' => ['video/mp4', 'video'],
+    'mov' => ['video/quicktime', 'video'],
+    'webm' => ['video/webm', 'video'],
+];
+
+$imported = 0;
+
+foreach ($prefixes as $prefix) {
+
+    try {
+        $objects = $spaces->listObjects($prefix);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        exit(
+            'Unable to scan Spaces: '
+            . $e->getMessage()
+        );
+    }
+
+    foreach ($objects as $object) {
+
+    $key = $object['Key'] ?? '';
+
+    if ($key === '' || str_ends_with($key, '/')) {
+        continue;
+    }
+
+    $relativePath = substr(
+        $key,
+        strlen($prefix)
+    );
+
+    if (
+        $relativePath === ''
+        || str_contains($relativePath, '/')
+    ) {
+        continue;
+    }
+
+    $extension = strtolower(
+        pathinfo($relativePath, PATHINFO_EXTENSION)
+    );
+
+    if ($relativePath === '.keep') {
+        continue;
+    }
+
+    if (
+        $extension === ''
+        || !isset($mimeTypes[$extension])
+    ) {
+        continue;
+    }
+
+    [
+        $mimeType,
+        $mediaType,
+    ] = $mimeTypes[$extension];
+
+    /*
+     * Do not import the same Spaces object twice.
+     */
+    $stmt = $db->prepare(
+        '
+        SELECT id
+        FROM media_files
+        WHERE storage_key = :storage_key
+        LIMIT 1
+        '
+    );
+
+    $stmt->execute([
+        'storage_key' => $key,
+    ]);
+
+    if ($stmt->fetch()) {
+        continue;
+    }
+
+    $uuid = bin2hex(
+        random_bytes(16)
+    );
+
+    $filename = basename($relativePath);
+
+    $fileSize = isset($object['Size'])
+        ? (int) $object['Size']
+        : 0;
+
+    $cdnUrl = $spaces->url($key);
+
+    $mediaModel->create(
+        $eventId,
+        $uuid,
+        $filename,
+        $mediaType,
+        $mimeType,
+        $fileSize,
+        $key,
+        $cdnUrl
+    );
+
+        $imported++;
+    }
+}
+
+redirect(
+    '/admin/events/view.php?id='
+    . $eventId
+    . '&imported='
+    . $imported
+);

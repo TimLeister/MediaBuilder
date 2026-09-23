@@ -1,0 +1,13 @@
+{
+    "name": "timleister/media",
+    "description": "Sports media gallery",
+    "autoload": {
+        "psr-4": {
+            "Media\\": "app/"
+        }
+    },
+    "require": {
+        "aws/aws-sdk-php": "^3.395",
+        "vlucas/phpdotenv": "^5.7"
+    }
+}
