@@ -120,9 +120,13 @@ CREATE TABLE download_jobs (
     archive_path VARCHAR(1000) NULL,
     download_name VARCHAR(255) NULL,
     error_message TEXT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP NULL DEFAULT NULL,
+    last_heartbeat_at TIMESTAMP NULL DEFAULT NULL,
+    failed_files INT UNSIGNED NOT NULL DEFAULT 0,
+    failure_details LONGTEXT NULL,
     completed_at TIMESTAMP NULL DEFAULT NULL,
     expires_at TIMESTAMP NULL DEFAULT NULL,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
