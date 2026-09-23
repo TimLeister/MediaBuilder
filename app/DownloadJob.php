@@ -121,7 +121,7 @@ final class DownloadJob
                     OR expires_at > NOW()
                )
              ORDER BY id DESC
-             LIMIT $limit'
+             LIMIT ' . $limit
         );
 
         $stmt->execute([
