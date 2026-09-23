@@ -115,11 +115,8 @@ final class DownloadJob
              FROM download_jobs
              WHERE user_id = :user_id
                AND event_id = :event_id
-               AND (
-                    status <> "expired"
-                    OR expires_at IS NULL
-                    OR expires_at > NOW()
-               )
+               AND status <> "expired"
+               AND (expires_at IS NULL OR expires_at > NOW())
              ORDER BY id DESC
              LIMIT ' . $limit
         );
@@ -170,7 +167,9 @@ final class DownloadJob
                 'UPDATE download_jobs
                  SET
                     status = "processing",
-                    started_at = NOW(),
+                    attempts = attempts + 1,
+                    started_at = COALESCE(started_at, NOW()),
+                    last_heartbeat_at = NOW(),
                     error_message = NULL
                  WHERE id = :id'
             );
@@ -182,9 +181,10 @@ final class DownloadJob
             $this->db->commit();
 
             $job['status'] = 'processing';
+            $job['attempts'] = (int) $job['attempts'] + 1;
 
             return $job;
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
@@ -193,42 +193,64 @@ final class DownloadJob
         }
     }
 
+    public function heartbeat(int $id): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE download_jobs
+             SET last_heartbeat_at = NOW()
+             WHERE id = :id
+               AND status = "processing"'
+        );
+
+        $stmt->execute(['id' => $id]);
+    }
+
     public function updateProgress(
         int $id,
         int $processedFiles,
-        int $processedBytes
+        int $processedBytes,
+        int $failedFiles = 0
     ): void {
         $stmt = $this->db->prepare(
             'UPDATE download_jobs
              SET
                 processed_files = :processed_files,
-                processed_bytes = :processed_bytes
-             WHERE id = :id'
+                processed_bytes = :processed_bytes,
+                failed_files = :failed_files,
+                last_heartbeat_at = NOW()
+             WHERE id = :id
+               AND status = "processing"'
         );
 
         $stmt->execute([
             'id' => $id,
             'processed_files' => $processedFiles,
             'processed_bytes' => $processedBytes,
+            'failed_files' => $failedFiles,
         ]);
     }
 
     public function complete(
         int $id,
         string $archivePath,
+        int $failedFiles = 0,
+        ?string $failureDetails = null,
         int $ttlHours = 24
     ): void {
+        $ttlHours = max(1, min($ttlHours, 168));
+
         $stmt = $this->db->prepare(
             'UPDATE download_jobs
              SET
                 status = "complete",
-                processed_files = total_files,
-                processed_bytes = total_bytes,
+                failed_files = :failed_files,
+                failure_details = :failure_details,
                 archive_path = :archive_path,
                 completed_at = NOW(),
+                last_heartbeat_at = NOW(),
                 expires_at = DATE_ADD(
                     NOW(),
-                    INTERVAL 24 HOUR
+                    INTERVAL ' . $ttlHours . ' HOUR
                 )
              WHERE id = :id'
         );
@@ -236,7 +258,15 @@ final class DownloadJob
         $stmt->execute([
             'id' => $id,
             'archive_path' => $archivePath,
+            'failed_files' => $failedFiles,
+            'failure_details' => $failureDetails,
         ]);
+
+        $this->db->prepare(
+            'UPDATE download_jobs
+             SET processed_files = total_files - failed_files
+             WHERE id = :id'
+        )->execute(['id' => $id]);
     }
 
     public function fail(int $id, string $message): void
@@ -245,14 +275,34 @@ final class DownloadJob
             'UPDATE download_jobs
              SET
                 status = "failed",
-                error_message = :error_message
-             WHERE id = :id'
+                error_message = :error_message,
+                last_heartbeat_at = NOW()
+             WHERE id = :id
+               AND status = "processing"'
         );
 
         $stmt->execute([
             'id' => $id,
             'error_message' => mb_substr($message, 0, 2000),
         ]);
+    }
+
+    public function requeueStale(int $minutes = 30): int
+    {
+        $minutes = max(5, min($minutes, 1440));
+
+        $sql = 'UPDATE download_jobs
+                SET
+                    status = "queued",
+                    error_message = "Worker heartbeat expired; job requeued.",
+                    last_heartbeat_at = NULL
+                WHERE status = "processing"
+                  AND last_heartbeat_at IS NOT NULL
+                  AND last_heartbeat_at < DATE_SUB(NOW(), INTERVAL '
+            . $minutes
+            . ' MINUTE)';
+
+        return $this->db->exec($sql);
     }
 
     public function expire(int $id): void

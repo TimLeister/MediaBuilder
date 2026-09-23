@@ -1310,7 +1310,10 @@ function renderDownloadJob(job) {
             percent + '%)';
     } else if (job.status === 'complete') {
         statusText =
-            'Ready — ' + formatBytes(job.total_bytes);
+            job.failed_files > 0
+                ? 'Ready — ' + job.processed_files +
+                  ' downloaded, ' + job.failed_files + ' failed'
+                : 'Ready — ' + formatBytes(job.total_bytes);
     } else if (job.status === 'failed') {
         statusText =
             'Failed: ' + (job.error_message || 'Unknown error.');
@@ -1339,6 +1342,11 @@ function renderDownloadJob(job) {
             ${job.processed_files} / ${job.total_files} files
             · ${formatBytes(job.processed_bytes)}
             / ${formatBytes(job.total_bytes)}
+            ${
+                job.failed_files > 0
+                    ? ' · ' + job.failed_files + ' failed'
+                    : ''
+            }
         </div>
 
         <div class="download-job-actions">
