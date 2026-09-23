@@ -5,12 +5,12 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MediaConfig;
-use MediaDatabase;
-use MediaDownloadJob;
-use MediaEvent;
-use MediaMediaFile;
-use MediaSpaces;
+use Media\Config;
+use Media\Database;
+use Media\DownloadJob;
+use Media\Event;
+use Media\MediaFile;
+use Media\Spaces;
 
 Config::load(__DIR__ . '/..');
 
