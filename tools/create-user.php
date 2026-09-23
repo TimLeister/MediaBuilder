@@ -9,8 +9,8 @@ if (PHP_SAPI !== 'cli') {
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use MediaConfig;
-use MediaDatabase;
+use Media\Config;
+use Media\Database;
 
 Config::load(__DIR__ . '/..');
 
