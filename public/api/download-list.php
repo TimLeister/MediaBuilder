@@ -6,10 +6,10 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 require_once __DIR__ . '/../../app/helpers.php';
 require_once __DIR__ . '/../admin/bootstrap.php';
 
-use MediaAuth;
-use MediaConfig;
-use MediaDatabase;
-use MediaDownloadJob;
+use Media\Auth;
+use Media\Config;
+use Media\Database;
+use Media\DownloadJob;
 
 Config::load(__DIR__ . '/../..');
 
