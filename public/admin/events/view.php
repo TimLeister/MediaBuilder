@@ -632,6 +632,13 @@ $deletedCount = isset($_GET['deleted'])
         Upload Media
     </a>
 
+    <a
+        class="button button-primary"
+        href="/admin/events/download.php?id=<?= $eventId ?>"
+    >
+        Download All Media
+    </a>
+
     <form
         method="POST"
         action="/admin/events/import.php"
