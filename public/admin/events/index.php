@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../../vendor/autoload.php';
 require_once __DIR__ . '/../../../app/helpers.php';
 require_once __DIR__ . '/../bootstrap.php';
 
+use Media\Auth;
 use Media\Config;
 use Media\Database;
 use Media\Event;
@@ -14,6 +15,8 @@ use Media\ShareLink;
 Config::load(__DIR__ . '/../../..');
 
 $db = Database::connection();
+
+$csrfToken = Auth::csrfToken();
 
 $eventModel = new Event($db);
 $shareModel = new ShareLink($db);
@@ -98,9 +101,13 @@ $created = isset($_GET['created']);
 <div class="top">
     <h1>Events</h1>
 
-    <a class="button" href="/admin/events/new.php">
-        Create Event
-    </a>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <a class="button" href="/admin/events/new.php">Create Event</a>
+        <form method="post" action="/admin/logout.php" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
+            <button class="button" type="submit">Log Out</button>
+        </form>
+    </div>
 </div>
 
 <?php if ($created): ?>
