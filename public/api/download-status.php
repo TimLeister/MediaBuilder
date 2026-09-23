@@ -34,10 +34,11 @@ if (!$job || (int) $job['user_id'] !== Auth::userId()) {
 
 $totalFiles = (int) $job['total_files'];
 $processedFiles = (int) $job['processed_files'];
+$failedFiles = (int) ($job['failed_files'] ?? 0);
 
 $percent = $totalFiles > 0
     ? (int) floor(
-        ($processedFiles / $totalFiles) * 100
+        (($processedFiles + $failedFiles) / $totalFiles) * 100
     )
     : 0;
 
@@ -55,6 +56,13 @@ echo json_encode([
         'processed_files' => $processedFiles,
         'total_bytes' => (int) $job['total_bytes'],
         'processed_bytes' => (int) $job['processed_bytes'],
+        'failed_files' => $failedFiles,
+        'failure_details' => $job['failure_details'] ?? null,
+        'attempts' => (int) ($job['attempts'] ?? 0),
+        'started_at' => $job['started_at'],
+        'last_heartbeat_at' => $job['last_heartbeat_at'],
+        'completed_at' => $job['completed_at'],
+        'expires_at' => $job['expires_at'],
         'percent' => $percent,
         'error_message' => $job['error_message'],
         'download_url' => $job['status'] === 'complete'
